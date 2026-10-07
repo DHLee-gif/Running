@@ -1,0 +1,20 @@
+{
+  "configurations": [
+    {
+      "name": "NU40DK",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "C:/Users/olleh/AppData/Local/Arduino15/packages/nucode/hardware/nrf52/1.0.2/**"
+      ],
+      "defines": [
+        "ARDUINO=10819",
+        "NRF52840_XXAA",
+        "USE_TINYUSB"
+      ],
+      "cStandard": "c11",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-arm"
+    }
+  ],
+  "version": 4
+}
