@@ -23,20 +23,20 @@ void writeReg(uint8_t reg, uint8_t val) {
   Wire.endTransmission();
 }
 
-uint8_t readReg(uint8_t addr, uint8_t reg) {
-  Wire.beginTransmission(addr);
-  Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) return 0xFF;
-  Wire.requestFrom(addr, (uint8_t)1);
-  return Wire.available() ? Wire.read() : 0xFF;
+uint8_t readReg(uint8_t addr, uint8_t reg) { // 칸에서 1바이트 읽기 : ID, 상태 확인용
+  Wire.beginTransmission(addr); // "0x6A번, 0x6B번 집에 보낼 주문서 작성 시작
+  Wire.write(reg); // 주문서에 '0X0F번 칸' 적기. 
+  if (Wire.endTransmission(false) != 0) return 0xFF; // 주문서 실제 발송하고 센서가 있으면 반환값 0, 없으면 1~3 반환. false는 STOP 비트 안 보내고 계속 읽기 위해. 없으면 0xFF 반환
+  Wire.requestFrom(addr, (uint8_t)1); //"그 칸 내용물 1바이트 보내줘."
+  return Wire.available() ? Wire.read() : 0xFF; // 택배함 확인 -> 있으면 꺼내기.
 }
 
-bool dataReady() {
-  return (readReg(IMU_ADDR, STATUS) & 0x03) == 0x03;
-}
+bool dataReady() { // STATUS 레지스터(0x1E)의 하위비트는 가속도, 상위비트는 자이로 데이터 준비 여부를 나타냄
+  return (readReg(IMU_ADDR, STATUS) & 0x03) == 0x03; // & 0x03은 하위 2비트만 남기고 == 0x03은 두 비트 모두 1인지 확인
+} // 예시: STATUS가 0x07(0000 0111)이면 & 0x03을 해서 0x03이 되므로 true임. STATUS가 0x01이면 가속도만 준비된 상태라 false임.
 
 // 가속도(g), 자이로(dps)를 읽어서 a[3], g[3]에 저장 (자이로는 보정값 적용)
-void readIMU(float a[3], float g[3]) {
+void readIMU(float a[3], float g[3]) { // 12바이트를 한 번에 읽어 g, dps 단위로 변환
   Wire.beginTransmission(IMU_ADDR);
   Wire.write(OUTX_L_G);
   Wire.endTransmission(false);
@@ -108,15 +108,16 @@ void loop() {
   float a[3], g[3];
   readIMU(a, g);
 
-  static unsigned long lastPrint = 0;
-  if (millis() - lastPrint < 3000) return;
-  lastPrint = millis();
-
   Serial.print(millis()); Serial.print(',');
-  Serial.print(a[0], 3); Serial.print(',');
+  Serial.print(a[0], 3); Serial.print(','); // 뒤의 3은 소수점 아래 몇 자리까지 출력할지를 정함.
   Serial.print(a[1], 3); Serial.print(',');
   Serial.print(a[2], 3); Serial.print(',');
   Serial.print(g[0], 2); Serial.print(',');
   Serial.print(g[1], 2); Serial.print(',');
   Serial.println(g[2], 2);
 }
+
+// 잠시 정수 진법 복습.
+// Serial.print(106)	106 (기본 DEC)
+// Serial.print(106, HEX)	6A
+// Serial.print(106, BIN)	1101010
