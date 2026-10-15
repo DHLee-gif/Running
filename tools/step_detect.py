@@ -12,6 +12,10 @@ IMU CSV에서 걸음 수와 케이던스를 계산하는 스크립트 (PC에서 
 검산:
     자이로 gz의 팔 흔들기 파도 1번 = 2걸음
 
+걸음 간격 변동성:
+    걸음 사이 시간의 평균, 표준편차, 변동계수(CV = 표준편차 / 평균)
+    → 걸음 수가 같아도 일정하게 걸었는지, 들쭉날쭉 걸었는지 구분
+
 사용법:
     python tools/step_detect.py data/walk01.csv --truth 45
     python tools/step_detect.py data/walk01.csv --truth 45 --sweep      # 임계값별 비교표
@@ -152,11 +156,30 @@ print(f"  걸음 수: {n_steps}{error_text(n_steps, args.truth)}")
 if rejected:
     print(f"  제외된 후보 {len(rejected)}개: " + ", ".join(f"{t[i]:.1f}초" for i in rejected))
 
-if n_steps >= 2:
-    intervals = np.diff(t[steps])
-    intervals = intervals[intervals <= args.max_interval]  # 걷기 사이 공백 제외
+iv_t, intervals, med = np.array([]), np.array([]), None
+if n_steps >= 3:
+    step_t = t[steps]
+    intervals = np.diff(step_t)
+    iv_t = step_t[1:]                                  # 간격이 끝나는 걸음의 시각 (그래프 x축)
+    keep = intervals <= args.max_interval              # 걷기 사이 공백 제외
+    iv_t, intervals = iv_t[keep], intervals[keep]
     med = np.median(intervals)
     print(f"  걸음 간격 중앙값: {med:.3f}초 → 케이던스 약 {60 / med:.0f}spm")
+
+    # ===== 걸음 간격 변동성 (리듬이 얼마나 일정한가) =====
+    mean, sd = intervals.mean(), intervals.std(ddof=1)
+    cv = sd / mean * 100
+    print(f"\n[걸음 간격 변동성]")
+    print(f"  평균 {mean:.3f}초 ± 표준편차 {sd:.3f}초")
+    print(f"  변동계수(CV) {cv:.1f}%  (작을수록 일정한 리듬)")
+
+    # 중앙값의 1.5배 초과 = 놓친 걸음 / 0.5배 미만 = 걸음이 아닌 움직임 → 둘 다 제외
+    normal = intervals[(intervals >= med * 0.5) & (intervals <= med * 1.5)]
+    n_out = len(intervals) - len(normal)
+    cv2 = normal.std(ddof=1) / normal.mean() * 100
+    print(f"  튀는 간격 {n_out}개 제외 → CV {cv2:.1f}%")
+    
+    print("  간격 목록:", np.round(intervals, 2))
 
 # ===== 자이로로 검산 =====
 gz_s, swings = count_gyro_swings(t, gz, fs, args.gyro_height)
@@ -164,7 +187,8 @@ n_gyro = len(swings) * 2
 print(f"\n[자이로 검산] gz 파도 {len(swings)}번 × 2 = {n_gyro}걸음{error_text(n_gyro, args.truth)}")
 
 # ===== 그래프 =====
-fig, axes = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True,
+                         gridspec_kw={"height_ratios": [3, 2, 3]})
 
 axes[0].plot(t, mag, color="black", linewidth=0.8, label="|a|")
 axes[0].plot(t[steps], mag[steps], "o", color="red", markersize=5, label=f"step ({n_steps})")
@@ -179,16 +203,38 @@ axes[0].set_title("Step detection from acceleration magnitude")
 axes[0].legend(loc="upper right")
 axes[0].grid(alpha=0.3)
 
-axes[1].plot(t, gz, color="lightgray", linewidth=0.8, label="gz raw")
-axes[1].plot(t, gz_s, color="green", linewidth=1.0, label="gz smoothed")
-axes[1].plot(t[swings], gz_s[swings], "o", color="blue", markersize=5,
+# ----- 걸음 간격 그래프: 점 하나 = 걸음 사이 시간, 색 = 중앙값에서 벗어난 정도 -----
+ax = axes[1]
+if med is not None:
+    dev = np.abs(intervals - med) / med * 100          # 중앙값에서 몇 % 벗어났나
+    groups = [
+        (dev <= 10,                "#2e9e5b", "o", "steady (within 10%)"),
+        ((dev > 10) & (dev <= 25), "#e69500", "s", "drifting (10-25%)"),
+        (dev > 25,                 "#d03b3b", "X", "off (over 25%)"),
+    ]
+    ax.axhspan(med * 0.9, med * 1.1, color="#2e9e5b", alpha=0.10)   # ±10% 띠
+    ax.axhline(med, color="gray", linestyle="--", linewidth=0.8,
+               label=f"median {med:.2f}s")
+    ax.plot(iv_t, intervals, color="lightgray", linewidth=1.0, zorder=1)
+    for mask, color, marker, label in groups:
+        if mask.any():
+            ax.plot(iv_t[mask], intervals[mask], marker, color=color, markersize=7,
+                    linestyle="none", zorder=2, label=f"{label}: {mask.sum()}")
+    ax.legend(loc="upper left", fontsize=9)
+ax.set_ylabel("step interval (s)")
+ax.set_title("Step rhythm: time between steps")
+ax.grid(alpha=0.3)
+
+axes[2].plot(t, gz, color="lightgray", linewidth=0.8, label="gz raw")
+axes[2].plot(t, gz_s, color="green", linewidth=1.0, label="gz smoothed")
+axes[2].plot(t[swings], gz_s[swings], "o", color="blue", markersize=5,
              label=f"arm swing ({len(swings)} x 2 = {n_gyro})")
-axes[1].axhline(args.gyro_height, color="blue", linestyle="--", linewidth=0.8)
-axes[1].set_ylabel("gz (dps)")
-axes[1].set_xlabel("time (s)")
-axes[1].set_title("Arm swing from gyroscope (cross-check)")
-axes[1].legend(loc="upper right")
-axes[1].grid(alpha=0.3)
+axes[2].axhline(args.gyro_height, color="blue", linestyle="--", linewidth=0.8)
+axes[2].set_ylabel("gz (dps)")
+axes[2].set_xlabel("time (s)")
+axes[2].set_title("Arm swing from gyroscope (cross-check)")
+axes[2].legend(loc="upper right")
+axes[2].grid(alpha=0.3)
 
 plt.tight_layout()
 out_png = args.csv.rsplit(".", 1)[0] + "_steps.png"
