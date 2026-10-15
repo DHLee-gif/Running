@@ -1,5 +1,7 @@
 """
-반복 측정 결과를 한 번에 분석하고, 검출 v1(처음)과 v2(개선)를 비교하는 스크립트
+전체 측정을 한 번에 정리하는 스크립트 (속도별 평균 표 + results.png)
+
+trial.csv의 모든 측정을 걸음 검출 v1(처음)과 v2(개선)로 각각 분석해 비교한다.
 
 trial.csv에 적힌 측정 파일을 하나씩 읽어서
     걸음 수 오차, 걸음 간격 CV를 v1/v2로 각각 계산하고
@@ -8,8 +10,8 @@ trial.csv에 적힌 측정 파일을 하나씩 읽어서
 CV 안정: 처음 N걸음(--skip)을 빼고, 튀는 간격(중앙값의 0.5배 미만, 1.5배 초과)도 뺀 CV
 
 사용법:
-    python tools/evaluate.py
-    python tools/evaluate.py --skip 5
+    python tools/step_report.py
+    python tools/step_report.py --skip 5
 """
 import argparse
 import os
@@ -18,7 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from step_core import VERSIONS, cv, detect_steps, drop_outliers, step_intervals
+from step_detect import VERSIONS, cv, detect_steps, drop_outliers, step_intervals
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--trials", default="data/trial.csv", help="측정 기록 파일")
