@@ -3,6 +3,17 @@
 uint8_t IMU_ADDR = 0;
 float gyroBias[3] = {0, 0, 0};
 
+// ===== 샘플링 속도 선택: 52, 104, 208 중 하나 =====
+#define ODR_HZ 104
+
+#if ODR_HZ == 52
+  const uint8_t ODR_XL = 0x3C, ODR_G = 0x34;   // 52Hz,  ±8g / ±500dps
+#elif ODR_HZ == 104
+  const uint8_t ODR_XL = 0x4C, ODR_G = 0x44;   // 104Hz, ±8g / ±500dps
+#elif ODR_HZ == 208
+  const uint8_t ODR_XL = 0x5C, ODR_G = 0x54;   // 208Hz, ±8g / ±500dps
+#endif
+
 // 레지스터 주소 (LSM6DS3TR-C 데이터시트 기준)
 const uint8_t WHO_AM_I  = 0x0F;
 const uint8_t CTRL1_XL  = 0x10;
@@ -76,6 +87,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
   Wire.begin();
+  Wire.setClock(400000);   // I2C 400kHz (208Hz에서 읽기가 밀리지 않게)
 
   // 1) 주소 찾기 + WHO_AM_I 확인
   uint8_t candidates[] = {0x6A, 0x6B};
@@ -92,12 +104,14 @@ void setup() {
 
   // 2) 설정
   writeReg(CTRL3_C,  0x44);  // BDU=1(데이터 깨짐 방지), IF_INC=1(연속 읽기)
-  writeReg(CTRL1_XL, 0x4C);  // 가속도: 104Hz, ±8g
-  writeReg(CTRL2_G,  0x44);  // 자이로: 104Hz, ±500dps
+  writeReg(CTRL1_XL, ODR_XL);  // 가속도: ODR_HZ Hz, ±8g
+  writeReg(CTRL2_G,  ODR_G);  // 자이로: ODR_HZ Hz, ±500dps
   delay(200);                // 설정 직후 불안정한 값 버리기
 
   // 3) 자이로 보정
   calibrateGyro();
+
+  Serial.print("# ODR="); Serial.println(ODR_HZ);
 
   Serial.println("t_ms,ax,ay,az,gx,gy,gz");
 }
