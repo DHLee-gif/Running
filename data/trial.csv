@@ -1,5 +1,5 @@
-file,bpm,truth,note
-bpm40_1.csv,40,23, 처음 약 6걸음 박자 못 맞춤
+file,bpm,truth
+bpm40_1.csv,40,23
 bpm80_1.csv,80,42, 
 bpm120_1.csv,120,62,
 bpm40_2.csv,40,21,
