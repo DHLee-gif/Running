@@ -60,7 +60,7 @@ void setupAll() {
     delay(1000);
   }
   enablePullups();
-  ppg.setup(0x1F, 4, 2, 400, 411, 4096);             // ~100Hz, Red+IR
+  ppg.setup(0x3F, 4, 2, 400, 411, 4096);             // ~100Hz, Red+IR
 
   while (!imuInit()) {
     Serial.println("# IMU(0x6A)를 찾을 수 없음");
