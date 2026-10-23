@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>RunBand</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>RunBand</h1>
+    <span id="conn" class="chip" data-s="off"><i></i><span>연결 안 됨</span></span>
+  </header>
+
+  <p id="unsupported" class="notice" hidden>
+    이 브라우저는 Web Bluetooth를 지원하지 않아요. 안드로이드 크롬에서 https 주소로 열어 주세요.
+  </p>
+
+  <section class="controls">
+    <button id="btnConnect" class="btn">연결</button>
+    <button id="btnStart" class="btn primary" disabled>시작</button>
+    <button id="btnStop" class="btn danger" disabled>멈춤</button>
+  </section>
+
+  <section class="tiles">
+    <div class="tile">
+      <div class="label">심박</div>
+      <div class="value"><span id="hr">--</span><small>bpm</small></div>
+      <div class="sub" id="hrSub">&nbsp;</div>
+    </div>
+    <div class="tile">
+      <div class="label">케이던스</div>
+      <div class="value"><span id="cad">--</span><small>spm</small></div>
+      <div class="sub" id="cadSub">&nbsp;</div>
+    </div>
+    <div class="tile">
+      <div class="label">피부 온도</div>
+      <div class="value"><span id="temp">--</span><small>°C</small></div>
+      <div class="sub" id="tempSub">&nbsp;</div>
+    </div>
+    <div class="tile">
+      <div class="label">경과 시간</div>
+      <div class="value"><span id="elapsed">0:00</span></div>
+      <div class="sub" id="elapsedSub">대기 중</div>
+    </div>
+  </section>
+
+  <section class="sensors">
+    <span class="chip" id="sPpg" data-s="unknown"><i></i><span>PPG -</span></span>
+    <span class="chip" id="sImu" data-s="unknown"><i></i><span>IMU -</span></span>
+    <span class="chip" id="sTemp" data-s="unknown"><i></i><span>온도 -</span></span>
+  </section>
+
+  <section class="chart">
+    <h2>PPG 파형 <span>IR, 최근 8초</span></h2>
+    <canvas id="cvPpg"></canvas>
+    <div class="axis"><span>8초 전</span><span>지금</span></div>
+  </section>
+
+  <section class="chart">
+    <h2>가속도 크기 |a| <span>g, 최근 8초 · 점선 1g</span></h2>
+    <canvas id="cvAcc"></canvas>
+    <div class="axis"><span>8초 전</span><span>지금</span></div>
+  </section>
+
+  <p class="stats" id="stats">수신 - Hz · 샘플 0 · 빠진 패킷 0</p>
+
+  <section class="save" id="save" hidden>
+    <h2>기록 저장</h2>
+    <p id="saveInfo"></p>
+    <div class="row">
+      <button id="btnCsv" class="btn primary">심박·IMU CSV</button>
+      <button id="btnTempCsv" class="btn">온도 CSV</button>
+    </div>
+  </section>
+
+  <details class="log">
+    <summary>기록 (명령 · 상태)</summary>
+    <pre id="log"></pre>
+  </details>
+
+  <script src="protocol.js"></script>
+  <script src="analysis.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
