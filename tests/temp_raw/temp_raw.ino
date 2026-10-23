@@ -31,5 +31,5 @@ void loop() {
   Serial.print(millis());
   Serial.print(",");
   Serial.println(readTemp(), 3);
-  delay(500);
+  delay(1000);
 }
