@@ -61,6 +61,7 @@ function setBattery(mv, pct) {
 // 심박·케이던스 칸 비우기
 function clearLive(sub) {
   $('hr').textContent = $('cad').textContent = '--';
+  $('hr').classList.remove('uncertain');
   $('hrSub').textContent = $('cadSub').textContent = sub;
 }
 
@@ -244,7 +245,7 @@ function beginRecording(resumed) {
   if (!rec.startedAt) rec.startedAt = new Date();
   recording = true;
   savedData = false;
-  if (!resumed) clearLive('데이터 모으는 중');
+  if (!resumed) { clearLive('데이터 모으는 중'); hrTracker.reset(); }
   $('save').hidden = true;
   $('elapsedSub').textContent = '측정 중';
   setConn(rxChar ? 'on' : 'lost');
@@ -364,6 +365,8 @@ function median(x) {
   return s[s.length >> 1];
 }
 
+const hrTracker = Analysis.createHrTracker();
+
 function analyze() {
   if (!recording || !live.t.length) return;
   if (Date.now() - lastRxWall > 3000) {         // 3초 넘게 데이터가 안 오면 옛 값 지우기
@@ -381,17 +384,20 @@ function analyze() {
   const fs = (t.length - 1) / (t[t.length - 1] - t[0]);
   const imuDead = a.every(v => v === 0);
 
-  // 심박
+  // 심박 (정지: 기존 방식 / 걷기·달리기: 팔 흔들기 리듬 제외 + 추적)
   if (median(ir) < 50000) {                    // hr_filter.py와 같은 기준
+    hrTracker.reset();
     $('hr').textContent = '--';
+    $('hr').classList.remove('uncertain');
     $('hrSub').textContent = '피부 접촉 확인';
   } else {
-    const r = Analysis.heartRate(ir, a, fs);
+    const r = hrTracker.update(t, ir, a, fs);
     $('hr').textContent = r ? Math.round(r.hr) : '--';
+    $('hr').classList.toggle('uncertain', !!(r && r.low));   // 부정확하면 흐리게
     $('hrSub').textContent = !r ? '봉우리 없음'
-      : r.action === '교체' ? `흔들림 리듬 피함 (FFT ${Math.round(r.hrFft)})`
-      : r.action === '대체없음' ? '흔들림과 겹침 · 부정확할 수 있음'
-      : Number.isNaN(r.motion) ? '움직임 적음' : '흔들림과 무관';
+      : r.mode === 'run' ? '부정확 · 달리기 중'
+      : r.low ? '부정확 · 걸음 리듬과 겹침'
+      : r.mode === 'walk' ? '걷는 중 · 팔 흔들기 리듬 제외' : '정지 중';
   }
 
   // 케이던스

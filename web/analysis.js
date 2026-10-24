@@ -164,7 +164,50 @@ const Analysis = (() => {
     return { spm: 60 / median(iv), steps: steps.length };
   }
 
-  return { heartRate, cadence, spectrum, peaksInBand };
+  // ===== 심박 추적기 (2026-10-25 착용 테스트 결과 반영) =====
+  // - 걸음 없음: heartRate()(기존 방식)로 계산하고 추적 기준을 그 값으로 다시 맞춤
+  // - 걸음 있음: 팔 흔들기 리듬(케이던스/2)과 그 3배 근처 후보를 빼고, 이전 값에서 가깝고 강한 후보를 따라감
+  // - 달리기(케이던스 130 이상)나 심박≈케이던스(±10)면 '부정확' (테스트에서 달리기 오차가 컸음)
+  const RUN_CAD = 130, ARM_LOCK = 7, OVERLAP = 10;
+
+  function createHrTracker() {
+    let prev = null;
+    return {
+      reset() { prev = null; },
+      // t: 초, ir/amag: 최근 10초, fs: Hz → {hr, cad, mode, low}
+      update(t, ir, amag, fs) {
+        const c0 = cadence(t, amag);
+        const cad = c0 ? c0.spm : null;
+        if (cad === null) {                                   // 걸음 없음
+          const r = heartRate(ir, amag, fs);
+          if (!r) return null;
+          prev = r.hr;
+          return { hr: prev, cad, mode: 'still', low: false };
+        }
+        const all = peaksInBand(spectrum(ir, fs), HR_BAND);
+        if (!all.length) return null;
+        let c = all.slice(0, 8).filter(x => x[1] >= 0.1 * all[0][1]);
+        const arm = cad / 2;
+        const c2 = c.filter(x => Math.abs(x[0] - arm) > ARM_LOCK && Math.abs(x[0] - 3 * arm) > ARM_LOCK);
+        if (c2.length) c = c2;
+        if (prev === null) prev = c[0][0];
+        const jump = prev < cad * 0.6 ? 40 : 10;                // 운동 시작 직후엔 크게 움직일 수 있음
+        const near = c.filter(x => Math.abs(x[0] - prev) <= jump);
+        if (near.length) {
+          let best = near[0], bestScore = -1;
+          for (const x of near) {
+            const s = x[1] / (1 + Math.abs(x[0] - prev) / 5);  // 가깝고 강한 후보
+            if (s > bestScore) { bestScore = s; best = x; }
+          }
+          prev = 0.6 * prev + 0.4 * best[0];
+        }
+        const low = cad >= RUN_CAD || Math.abs(prev - cad) <= OVERLAP;
+        return { hr: prev, cad, mode: cad >= RUN_CAD ? 'run' : 'walk', low };
+      },
+    };
+  }
+
+  return { heartRate, cadence, spectrum, peaksInBand, createHrTracker };
 })();
 
 if (typeof module !== 'undefined') module.exports = Analysis;   // node 테스트용
