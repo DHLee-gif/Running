@@ -112,15 +112,33 @@ async function openGatt() {
   await data.startNotifications();
   setConn('on');
   log('연결됨: ' + device.name);
+  lastTextWall = Date.now();
+  keepAwake(true);                                       // 연결 중엔 화면 유지 (꺼지면 크롬이 끊을 수 있음)
   send('STATUS');
   clearInterval(pollTimer);
-  pollTimer = setInterval(() => send('STATUS'), 5000);   // 센서 상태 확인
+  pollTimer = setInterval(poll, 5000);
+}
+
+// 5초마다 상태 확인. 12초 넘게 보드 응답이 없으면 연결이 깨진 것으로 보고 다시 연결
+// (크롬이 끊김을 알려주지 않아 '연결됨'인데 응답이 없는 경우가 있음)
+let lastTextWall = 0;
+function poll() {
+  if (Date.now() - Math.max(lastTextWall, lastRxWall) > 12000) {
+    log('보드 응답 없음 → 다시 연결');
+    clearInterval(pollTimer);
+    rxChar = null;
+    if (device.gatt.connected) device.gatt.disconnect();   // → onDisconnected → 다시 연결
+    else onDisconnected();
+    return;
+  }
+  send('STATUS');
 }
 
 function onDisconnected() {
+  if (connState === 'lost' && !rxChar && reconnectTimer) return;   // 이미 처리 중
   rxChar = null;
   clearInterval(pollTimer);
-  if (userClosed) { setConn('off'); log('연결 끊음'); return; }
+  if (userClosed) { setConn('off'); log('연결 끊음'); if (!recording) keepAwake(false); return; }
   setConn('lost');
   log('연결 끊김 → 다시 연결 시도');
   scheduleReconnect();
@@ -160,6 +178,7 @@ function send(cmd) {
 let textBuf = '';
 const dec = new TextDecoder();
 function onText(e) {
+  lastTextWall = Date.now();
   textBuf += dec.decode(e.target.value, { stream: true });
   let i;
   while ((i = textBuf.indexOf('\n')) >= 0) {
@@ -234,7 +253,7 @@ function beginRecording(resumed) {
 
 function endRecording(note) {
   recording = false;
-  keepAwake(false);
+  if (connState === 'off') keepAwake(false);    // 연결 중이면 화면 유지는 계속
   $('elapsedSub').textContent = '멈춤';
   clearLive('측정 멈춤');
   setConn(rxChar ? 'on' : (userClosed ? 'off' : 'lost'));
