@@ -280,17 +280,37 @@ function download(name, parts) {
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
+const fileBase = () => 'runband_' + stamp(rec.startedAt || new Date());
+
 function saveData() {
-  const base = 'runband_' + stamp(rec.startedAt || new Date());
-  download(base + '.csv', rec.dataCsvParts());
+  download(fileBase() + '.csv', rec.dataCsvParts());
   savedData = true;
-  log('저장: ' + base + '.csv');
+  log('저장: ' + fileBase() + '.csv');
 }
 
 function saveTemp() {
-  const base = 'runband_' + stamp(rec.startedAt || new Date());
-  download(base + '_temp.csv', [rec.tempCsv()]);
-  log('저장: ' + base + '_temp.csv');
+  download(fileBase() + '_temp.csv', [rec.tempCsv()]);
+  log('저장: ' + fileBase() + '_temp.csv');
+}
+
+// 두 파일을 공유 창으로 (OneDrive 앱 선택 → PC로 동기화 → tools/sync/onedrive_pull.py가 data/로 복사)
+async function shareFiles() {
+  const base = fileBase();
+  const files = [
+    new File(rec.dataCsvParts(), base + '.csv', { type: 'text/csv' }),
+    new File([rec.tempCsv()], base + '_temp.csv', { type: 'text/csv' }),
+  ];
+  if (!navigator.canShare || !navigator.canShare({ files })) {
+    log('이 브라우저는 파일 공유를 지원하지 않음 → 저장 버튼 사용');
+    return;
+  }
+  try {
+    await navigator.share({ files, title: base });
+    savedData = true;
+    log('공유: ' + base + ' (.csv, _temp.csv)');
+  } catch (e) {
+    if (e.name !== 'AbortError') log('공유 실패: ' + e.message);   // AbortError = 공유 창 닫음
+  }
 }
 
 // ===== 화면 꺼짐 방지 =====
@@ -446,6 +466,11 @@ $('btnStart').onclick = onStart;
 $('btnStop').onclick = onStop;
 $('btnCsv').onclick = saveData;
 $('btnTempCsv').onclick = saveTemp;
+$('btnShare').onclick = shareFiles;
+try {   // 파일 공유가 되는 브라우저에서만 공유 버튼 보이기
+  $('btnShare').hidden = !(navigator.canShare &&
+    navigator.canShare({ files: [new File(['x'], 'a.csv', { type: 'text/csv' })] }));
+} catch (e) { /* 지원 안 함 */ }
 window.addEventListener('beforeunload', e => {
   if (recording || (rec.n && !savedData)) { e.preventDefault(); e.returnValue = ''; }
 });
