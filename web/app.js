@@ -12,6 +12,7 @@ let userClosed = false, reconnectTimer = null, pollTimer = null;
 let recording = false, savedData = false;
 let lastSeq = null, pkts = 0, gaps = 0, secCount = 0, rxHz = 0;
 let lastT = 0;                         // 마지막 샘플 시각 (보드 ms)
+let lastRxWall = 0;                    // 마지막으로 데이터를 받은 시각 (폰 시계)
 let wakeLock = null;
 const rec = new Protocol.Recorder();
 const live = { t: [], ir: [], a: [] };  // 최근 몇 초 (계산·그래프용)
@@ -48,6 +49,19 @@ function setSensor(name, v) {
   const [id, label] = map[name];
   setChip(id, v === 'ok' ? 'ok' : v === 'lost' ? 'lost' : 'unknown',
           label + ' ' + (v === 'ok' ? '정상' : v === 'lost' ? '끊김' : '-'));
+}
+
+// 배터리: 20% 미만 주의, 10% 미만 위험 (전압은 대략값)
+function setBattery(mv, pct) {
+  if (mv === undefined || +mv === 0) return;   // 펌웨어가 아직 배터리 값을 안 보냄
+  const p = +pct;
+  setChip('bat', p < 10 ? 'lost' : p < 20 ? 'wait' : 'ok', `배터리 ${p}% (${(mv / 1000).toFixed(2)}V)`);
+}
+
+// 심박·케이던스 칸 비우기
+function clearLive(sub) {
+  $('hr').textContent = $('cad').textContent = '--';
+  $('hrSub').textContent = $('cadSub').textContent = sub;
 }
 
 function fmtTime(ms) {
@@ -159,6 +173,7 @@ function handleLine(line) {
   const kv = Protocol.parseKV(line);
   if (line.startsWith('STATUS')) {
     setSensor('ppg', kv.ppg); setSensor('imu', kv.imu); setSensor('temp', kv.temp);
+    setBattery(kv.bat_mv, kv.bat_pct);
     if (!recording && kv.temp_c && kv.temp_c !== '-') $('temp').textContent = (+kv.temp_c).toFixed(1);
     if (kv.state === 'RUN' && !recording) {
       log('보드가 이미 측정 중 → 이어서 기록');
@@ -192,6 +207,7 @@ function onData(e) {
     lastT = t;
     secCount++;
   });
+  lastRxWall = Date.now();
   if (!r) { log('모르는 패킷 ' + e.target.value.byteLength + '바이트'); return; }
   if (lastSeq !== null) gaps += (r.seq - lastSeq - 1) & 0xFFFF;
   lastSeq = r.seq;
@@ -209,6 +225,7 @@ function beginRecording(resumed) {
   if (!rec.startedAt) rec.startedAt = new Date();
   recording = true;
   savedData = false;
+  if (!resumed) clearLive('데이터 모으는 중');
   $('save').hidden = true;
   $('elapsedSub').textContent = '측정 중';
   setConn(rxChar ? 'on' : 'lost');
@@ -219,7 +236,7 @@ function endRecording(note) {
   recording = false;
   keepAwake(false);
   $('elapsedSub').textContent = '멈춤';
-  $('hrSub').textContent = $('cadSub').textContent = ' ';
+  clearLive('측정 멈춤');
   setConn(rxChar ? 'on' : (userClosed ? 'off' : 'lost'));
   if (rec.n) {
     const dur = rec.n > 1 ? fmtTime(lastT - rec.chunks[0].t[0]) : '0:00';
@@ -310,6 +327,10 @@ function median(x) {
 
 function analyze() {
   if (!recording || !live.t.length) return;
+  if (Date.now() - lastRxWall > 3000) {         // 3초 넘게 데이터가 안 오면 옛 값 지우기
+    clearLive('데이터 끊김');
+    return;
+  }
   const tEnd = live.t[live.t.length - 1];
   let i0 = live.t.length - 1;
   while (i0 > 0 && live.t[i0 - 1] > tEnd - HR_WIN) i0--;

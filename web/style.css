@@ -58,7 +58,8 @@ h1 { font-size: 22px; margin: 0; }
 h2 { font-size: 14px; margin: 0 0 6px; font-weight: 600; }
 h2 span { color: var(--muted); font-weight: 400; margin-left: 4px; }
 
-.top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.top-chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .notice { background: var(--surface); border: 1px solid var(--bad); border-radius: 10px; padding: 12px; }
 
 /* 버튼 */

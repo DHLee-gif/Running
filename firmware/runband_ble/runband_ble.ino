@@ -186,6 +186,36 @@ void sensorLoop() {
 }
 
 // =====================================================================
+// 배터리 (메인 루프에서 10초마다)
+// =====================================================================
+// 분배 저항 비율은 보드 문서로 확인 못 함 → Adafruit 보드처럼 1/2로 가정
+// 멀티미터 값과 다르면 이 숫자만 고치면 됨 (배터리 전압 / 핀 전압)
+const float VBAT_RATIO = 2.0f;
+uint16_t batMv = 0, batRaw = 0;
+uint8_t  batPct = 0;
+
+// 리튬폴리머 전압 → 대략적인 잔량 (부하·충전 중엔 오차 큼)
+uint8_t lipoPercent(uint16_t mv) {
+  const uint16_t V[] = {3300, 3600, 3700, 3750, 3800, 3900, 4000, 4100, 4200};
+  const uint8_t  P[] = {0,    4,    13,   25,   40,   63,   78,   90,   100};
+  if (mv <= V[0]) return 0;
+  for (int i = 1; i < 9; i++) {
+    if (mv <= V[i]) return P[i - 1] + (uint32_t)(P[i] - P[i - 1]) * (mv - V[i - 1]) / (V[i] - V[i - 1]);
+  }
+  return 100;
+}
+
+void readBattery() {
+  analogReference(AR_INTERNAL_3_0);   // 0~3.0V
+  analogReadResolution(12);
+  uint32_t sum = 0;
+  for (int i = 0; i < 8; i++) sum += analogRead(PIN_VBAT);
+  batRaw = sum / 8;
+  batMv = (uint16_t)(batRaw * 3000.0f / 4096.0f * VBAT_RATIO);
+  batPct = lipoPercent(batMv);
+}
+
+// =====================================================================
 // BLE 전송 (메인 루프에서만 사용)
 // =====================================================================
 uint8_t  pkt[4 + 10 * 22];
@@ -251,7 +281,7 @@ void pumpData() {
 void sendLine(const char* s) {
   if (Bluefruit.connected() && bleuart.notifyEnabled()) {
     // 줄바꿈까지 한 번에 전송 (따로 보내면 앱에 "\n"만 마지막 값으로 보임)
-    char line[200];
+    char line[256];
     int n = snprintf(line, sizeof(line), "%s\n", s);
     bleuart.write((const uint8_t*)line, n);
     Serial.println(s);
@@ -274,12 +304,14 @@ const char* okStr(bool ok) { return ok ? "ok" : "lost"; }
 void sendStatus() {
   char tc[12] = "-";
   if (tempValid) fmtTemp(tc, sizeof(tc), tempRaw);
-  char msg[200];
+  char msg[256];
   snprintf(msg, sizeof(msg),
-           "STATUS state=%s t_ms=%lu mtu=%u ppg=%s imu=%s temp=%s ppg_hz=%u temp_c=%s n=%lu sent=%lu qdrop=%lu",
+           "STATUS state=%s t_ms=%lu mtu=%u ppg=%s imu=%s temp=%s ppg_hz=%u temp_c=%s n=%lu sent=%lu qdrop=%lu"
+           " bat_mv=%u bat_pct=%u bat_raw=%u",
            running ? "RUN" : "IDLE", running ? millis() - runStart : 0UL, currentMtu(),
            okStr(ppgOk), okStr(imuOk), okStr(tempOk), ppgHz, tc,
-           (unsigned long)produced, (unsigned long)sentN, (unsigned long)qDrop);
+           (unsigned long)produced, (unsigned long)sentN, (unsigned long)qDrop,
+           batMv, batPct, batRaw);
   sendLine(msg);
 }
 
@@ -402,6 +434,7 @@ void startAdv() {
 
 void setup() {
   Serial.begin(115200);   // while(!Serial) 없음: USB 없어도 바로 동작
+  readBattery();
 
   q = xQueueCreate(QUEUE_LEN, sizeof(Sample));
 
@@ -463,6 +496,13 @@ void loop() {
       snprintf(msg, sizeof(msg), "TEMP t_ms=%lu c=%s", (unsigned long)tempT, tc);
       sendLine(msg);
     }
+  }
+
+  // 배터리 10초마다
+  static unsigned long lastBat = 0;
+  if (millis() - lastBat >= 10000) {
+    lastBat = millis();
+    readBattery();
   }
 
   // PPG+IMU 원본 전송
