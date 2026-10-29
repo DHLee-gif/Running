@@ -1,3 +1,7 @@
 
 __pycache__/
 data/tmp*
+
+# RunBand 서버 (비밀 토큰, DB)
+server/token.txt
+server/*.db
